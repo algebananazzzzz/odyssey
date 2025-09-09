@@ -1,0 +1,33 @@
+# .github/workflows/preprod-mr-release.yml
+name: Pre-production Merge Request Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  # -------------------------------------
+  # 1. Create Tag to Production
+  # -------------------------------------
+  create-semantic-tag:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    permissions: write-all
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and push tag
+        id: tag_version
+        uses: anothrNick/github-tag-action@v1
+        env:
+          DEFAULT_BUMP: patch
+          RELEASE_BRANCHES: main
+          WITH_V: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: echo "New tag ${{ steps.tag_version.outputs.new_tag }}"

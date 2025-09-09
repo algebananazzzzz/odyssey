@@ -1,0 +1,41 @@
+# .github/workflows/prd-release-tag.yml
+name: Production Tag Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  infra-deploy-prd:
+    name: Provision Infrastructure (Production)
+    runs-on: ubuntu-latest
+    environment: prd
+
+    steps:
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: ⚙️ Setup Terraform CLI
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.11.0"
+
+      - name: 🚀 Apply Terraform for Production Infra
+        id: deploy
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform workspace select -or-create prd-app
+          terraform plan --var-file=config/prd.tfvars -out=output.tfplan -input=false
+          terraform apply -input=false --auto-approve output.tfplan
