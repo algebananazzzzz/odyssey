@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/algebananazzzzz/odyssey/cli/constants"
 	"github.com/algebananazzzzz/odyssey/cli/fileops"
@@ -61,17 +62,26 @@ func CloneProjectFiles(currentDir string, config types.ProjectConfig) func(ctx c
 		infraSrc, infraDest := constants.InfraPaths(tempDir, currentDir, config)
 		cicdSrc, cicdDest := constants.CICDPaths(tempDir, currentDir, config)
 
-		if empty && hasProjectFiles {
-			if err := fileops.CopyDir(projectSrc, currentDir); err != nil {
-				return fmt.Errorf("failed to copy project files: %v", err)
+		if err := fileops.Sync(infraSrc, infraDest); err != nil {
+			return fmt.Errorf("failed to replace infra files: %v", err)
+		}
+		if err := fileops.Sync(cicdSrc, cicdDest); err != nil {
+			return fmt.Errorf("failed to replace workflow files: %v", err)
+		}
+
+		for src, dest := range constants.STATIC_TEMPLATE_FILES {
+			if err := fileops.Sync(
+				filepath.Join(tempDir, src),
+				filepath.Join(currentDir, dest),
+			); err != nil {
+				return fmt.Errorf("failed to copy template files: %v", err)
 			}
 		}
 
-		if err := fileops.CopyOrReplace(infraSrc, infraDest); err != nil {
-			return fmt.Errorf("failed to replace infra files: %v", err)
-		}
-		if err := fileops.CopyOrReplace(cicdSrc, cicdDest); err != nil {
-			return fmt.Errorf("failed to replace workflow files: %v", err)
+		if empty && hasProjectFiles {
+			if err := fileops.Sync(projectSrc, currentDir); err != nil {
+				return fmt.Errorf("failed to copy project files: %v", err)
+			}
 		}
 
 		return nil
@@ -94,6 +104,22 @@ func InitGit(currentDir string) func(ctx context.Context) error {
 
 func AddSubmodule(repoPath, submodulePath, submoduleURL string) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
+		// First check if the path is already a submodule
+		checkCmd := exec.CommandContext(ctx, "git", "submodule", "status", "--", submodulePath)
+		checkCmd.Dir = repoPath
+		if err := checkCmd.Run(); err == nil {
+			// Submodule already exists
+			return nil
+		}
+
+		// Check if Git is already tracking the path as a file/dir
+		checkIndexCmd := exec.CommandContext(ctx, "git", "ls-files", "--error-unmatch", submodulePath)
+		checkIndexCmd.Dir = repoPath
+		if err := checkIndexCmd.Run(); err == nil {
+			return fmt.Errorf("path %q already tracked in repo, cannot add as submodule", submodulePath)
+		}
+
+		// Add the submodule
 		cmd := exec.CommandContext(ctx, "git", "submodule", "add", submoduleURL, submodulePath)
 		cmd.Dir = repoPath
 

@@ -11,6 +11,7 @@ import (
 	"github.com/algebananazzzzz/odyssey/cli/config"
 	"github.com/algebananazzzzz/odyssey/cli/constants"
 	"github.com/algebananazzzzz/odyssey/cli/operations"
+	"github.com/algebananazzzzz/odyssey/cli/types"
 	"github.com/algebananazzzzz/odyssey/cli/ui/formatters"
 	"github.com/algebananazzzzz/odyssey/cli/ui/forms"
 	"github.com/algebananazzzzz/odyssey/cli/ui/styles"
@@ -30,8 +31,12 @@ func Execute() {
 		fmt.Printf("Failed to load project config: %v\n", err)
 		os.Exit(1)
 	}
+	cfg := types.Config{
+		GlobalConfig:  globalConfig.Config,
+		ProjectConfig: projectConfig.Config,
+	}
 
-	form := forms.NewConfigForm(globalConfig.Config, projectConfig.Config, &confirm)
+	form := forms.NewConfigForm(cfg, &confirm)
 	if err := form.Run(); err != nil {
 		if err == huh.ErrUserAborted {
 			quit()
@@ -73,6 +78,10 @@ func Execute() {
 		{
 			Description: "Adding submodule...",
 			Action:      operations.AddSubmodule(currentDir, "infra/modules", constants.TERRAFORM_SUBMODULE_GIT_URL),
+		},
+		{
+			Description: "Customizing content files...",
+			Action:      operations.CustomizeContentFiles(currentDir, cfg),
 		},
 	}
 

@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
-func NewConfigForm(globalConfig *types.GlobalConfig, projectConfig *types.ProjectConfig, confirm *bool) *huh.Form {
+func NewConfigForm(cfg types.Config, confirm *bool) *huh.Form {
 
 	projectOpts := make([]huh.Option[string], 0, len(constants.PROJECT_TEMPLATES))
 	for value, tmpl := range constants.PROJECT_TEMPLATES {
@@ -44,7 +44,7 @@ func NewConfigForm(globalConfig *types.GlobalConfig, projectConfig *types.Projec
 				Description("The AWS S3 bucket where Odyssey will store Terraform state files. Ensure the bucket already exists in your AWS account.").
 				Placeholder("my-odyssey-bucket").
 				Key("bucket").
-				Value(&globalConfig.Bucket).
+				Value(&cfg.GlobalConfig.Bucket).
 				Validate(validators.NotEmpty),
 
 			huh.NewInput().
@@ -52,7 +52,7 @@ func NewConfigForm(globalConfig *types.GlobalConfig, projectConfig *types.Projec
 				Description("A folder prefix inside your bucket to separate state files for different purposes.").
 				Placeholder("tfstate").
 				Key("workspace_key_prefix").
-				Value(&globalConfig.WorkspaceKeyPrefix).
+				Value(&cfg.GlobalConfig.WorkspaceKeyPrefix).
 				Validate(validators.Alphanumeric),
 
 			huh.NewInput().
@@ -60,7 +60,7 @@ func NewConfigForm(globalConfig *types.GlobalConfig, projectConfig *types.Projec
 				Description("The AWS region to deploy your AWS resources to (e.g., ap-southeast-1).").
 				Placeholder("ap-southeast-1").
 				Key("region").
-				Value(&globalConfig.Region).
+				Value(&cfg.GlobalConfig.Region).
 				Validate(validators.AWSRegion),
 		),
 		huh.NewGroup(
@@ -71,19 +71,19 @@ func NewConfigForm(globalConfig *types.GlobalConfig, projectConfig *types.Projec
 				Title("Project Code").
 				Description("A unique identifier for this project (used in resource naming and state management).").
 				Placeholder("my-project").
-				Value(&projectConfig.Code).
+				Value(&cfg.ProjectConfig.Code).
 				Validate(validators.Alphanumeric),
 
 			huh.NewSelect[string]().
 				Title("Project Type").
 				Description("Select the type of project you are creating. This determines what infrastructure Odyssey will generate.").
-				Value(&projectConfig.Type).
+				Value(&cfg.ProjectConfig.Type).
 				Options(projectOpts...),
 
 			huh.NewSelect[int]().
 				Title("Environments").
 				Description("Choose how many environments Odyssey should set up. More environments allow for safer testing before production.").
-				Value(&projectConfig.Environments).
+				Value(&cfg.ProjectConfig.Environments).
 				Options(envOpts...),
 		),
 		huh.NewGroup(
