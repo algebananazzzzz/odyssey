@@ -1,6 +1,7 @@
 package operations
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -28,13 +29,8 @@ func isEmptyDirectory(path string) (bool, error) {
 	return true, nil
 }
 
-func CloneProjectFiles(config types.ProjectConfig) func() error {
-	return func() error {
-		currentDir, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %v", err)
-		}
-
+func CloneProjectFiles(currentDir string, config types.ProjectConfig) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
 		empty, err := isEmptyDirectory(currentDir)
 		if err != nil {
 			return fmt.Errorf("failed to check directory contents: %v", err)
@@ -48,27 +44,25 @@ func CloneProjectFiles(config types.ProjectConfig) func() error {
 		defer os.RemoveAll(tempDir)
 
 		// Clone the repository without checkout
-		cmd := exec.Command("git", "clone", "--no-checkout", constants.ODYSSEY_PROJECT_GIT_URL, tempDir)
+		cmd := exec.CommandContext(ctx, "git", "clone", "--no-checkout", constants.ODYSSEY_GIT_URL, tempDir)
 
 		if _, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to clone repository: %v", err)
 		}
 
 		// Checkout the specific commit
-		cmd = exec.Command("git", "-C", tempDir, "checkout", constants.CommitSHA)
+		cmd = exec.CommandContext(ctx, "git", "-C", tempDir, "checkout", constants.CommitSHA)
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to checkout commit %s: %v, %s", constants.CommitSHA, err, output)
 		}
 
-		infraSrc := constants.InfraSrc(tempDir, config)
-		cicdSrc := constants.CICDSrc(tempDir, config)
-		projectSrc := constants.ProjectSrc(tempDir, config)
+		projectSrc, hasProjectFiles := constants.ProjectSrc(tempDir, config)
 
-		infraDest := constants.InfraDest(currentDir)
-		cicdDest := constants.CICDDest(currentDir)
+		infraSrc, infraDest := constants.InfraPaths(tempDir, currentDir, config)
+		cicdSrc, cicdDest := constants.CICDPaths(tempDir, currentDir, config)
 
-		if empty && projectSrc != nil {
-			if err := fileops.CopyDir(*projectSrc, currentDir); err != nil {
+		if empty && hasProjectFiles {
+			if err := fileops.CopyDir(projectSrc, currentDir); err != nil {
 				return fmt.Errorf("failed to copy project files: %v", err)
 			}
 		}
@@ -84,11 +78,12 @@ func CloneProjectFiles(config types.ProjectConfig) func() error {
 	}
 }
 
-func InitGit(localPath string) func() error {
-	return func() error {
+func InitGit(currentDir string) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
 		// Initialize a new repository
-		cmd := exec.Command("git", "init")
-		cmd.Dir = localPath
+		cmd := exec.CommandContext(ctx, "git", "init")
+		cmd.Dir = currentDir
+
 		if _, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to initialize repository: %v", err)
 		}
@@ -97,9 +92,9 @@ func InitGit(localPath string) func() error {
 	}
 }
 
-func AddSubmodule(repoPath, submodulePath, submoduleURL string) func() error {
-	return func() error {
-		cmd := exec.Command("git", "submodule", "add", submoduleURL, submodulePath)
+func AddSubmodule(repoPath, submodulePath, submoduleURL string) func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		cmd := exec.CommandContext(ctx, "git", "submodule", "add", submoduleURL, submodulePath)
 		cmd.Dir = repoPath
 
 		// Run the command

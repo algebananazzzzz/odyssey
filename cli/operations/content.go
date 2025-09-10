@@ -2,6 +2,7 @@ package operations
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,8 +13,8 @@ import (
 	"github.com/algebananazzzzz/odyssey/cli/types"
 )
 
-func CustomizeContentFiles(config types.ProjectConfig) func() error {
-	return func() error {
+func CustomizeContentFiles(config types.ProjectConfig) func(context.Context) error {
+	return func(ctx context.Context) error {
 		if err := ReplaceSourceInTerraformFiles(
 			filepath.Join(".", "infra"),
 			`"../../modules`,

@@ -30,8 +30,8 @@ func NewConfigForm(globalConfig *types.GlobalConfig, projectConfig *types.Projec
 
 			huh.NewConfirm().
 				Title("Sounds cool?").
-				Affirmative("Spin up the cloud! ☁️").
-				Negative("Let's start terraforming 🌱").
+				Affirmative("Yes!! ☁️").
+				Negative("Lets Go! 🌱").
 				Value(confirm),
 		),
 		huh.NewGroup(
