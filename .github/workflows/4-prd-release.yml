@@ -24,6 +24,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: stable
+          check-latest: true
+          cache-dependency-path: |
+            cli/go.sum
+            **/go.sum
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
