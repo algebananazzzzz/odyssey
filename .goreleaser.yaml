@@ -15,8 +15,8 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
 
 builds:
-  - main: ./cli
-    dir: .
+  - main: .
+    dir: cli
     env:
       - CGO_ENABLED=0
     goos:
