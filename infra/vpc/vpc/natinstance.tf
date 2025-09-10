@@ -1,8 +1,8 @@
 locals {
-  nat_instance_name                       = "com-web-ec2inst-natinstance"
-  nat_instance_sg_name                    = "com-web-sg-natingress"
-  allow_traffic_from_nat_instance_sg_name = "com-app-sg-allownat"
-  nat_instance_ssh_key_name               = "com-web-keypair-sshec2instances"
+  nat_instance_name                       = "com-web-ec2inst-${var.project_code}-natinstance"
+  nat_instance_sg_name                    = "com-web-sg-${var.project_code}-natingress"
+  allow_traffic_from_nat_instance_sg_name = "com-app-sg-${var.project_code}-allownat"
+  nat_instance_ssh_key_name               = "com-web-keypair-${var.project_code}-sshec2instances"
   nat_instance_subnet_name                = "com-web-subnet-public-1a"
 }
 
