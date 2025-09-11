@@ -14,8 +14,14 @@ projects:
   #   cicd: cicd-templates/lambda_api_gw
   #   project_files: project-files/lambda_api_gw
 
-  # scheduled_job_lambda:
-  #   name: Scheduled Job (Lambda + EventBridge)
-  #   infra: infra/schedule_job_lambda
-  #   cicd: cicd-templates/schedule_job_lambda
-  #   project_files: project-files/schedule_job_lambda
+  scheduled_job:
+    name: Scheduled Job (Lambda + EventBridge)
+    infra: infra/schedule_job
+    cicd: cicd-templates/docker_lambda
+    project_files: project-files/schedule_job
+
+  scheduled_puppeteer_job:
+    name: Scheduled Puppeteer Job (for web scraping)
+    infra: infra/schedule_job
+    cicd: cicd-templates/docker_lambda
+    project_files: project-files/puppeteer_web_scraper
