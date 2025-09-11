@@ -9,6 +9,7 @@ import (
 
 var STATIC_TEMPLATE_FILES = map[string]string{
 	"infra/templates/00_backend.tf": "infra/00_backend.tf",
+	"infra/templates/.gitignore":    "infra/.gitignore",
 }
 
 func ProjectSrc(tempDir string, config types.ProjectConfig) (string, bool) {
