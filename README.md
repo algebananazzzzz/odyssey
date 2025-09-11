@@ -32,11 +32,11 @@ Get started with AWS cloud solutions, CI/CD, and Infrastructure as Code effortle
 
    Replace `download-link` with the appropriate URL from this list:
 
-   - Linux (i386):   https://github.com/algebananazzzzz/odyssey-cli/releases/latest/download/odyssey-cli_Linux_i386.tar.gz
-   - Linux (arm64):  https://github.com/algebananazzzzz/odyssey-cli/releases/latest/download/odyssey-cli_Linux_arm64.tar.gz
-   - Linux (x86_64): https://github.com/algebananazzzzz/odyssey-cli/releases/latest/download/odyssey-cli_Linux_x86_64.tar.gz
-   - MacOS (arm64):  https://github.com/algebananazzzzz/odyssey-cli/releases/latest/download/odyssey-cli_Darwin_arm64.tar.gz
-   - MacOS (x86_64): https://github.com/algebananazzzzz/odyssey-cli/releases/latest/download/odyssey-cli_Darwin_x86_64.tar.gz
+   - Linux (i386):   https://github.com/algebananazzzzz/odyssey/releases/latest/download/odyssey-cli_Linux_i386.tar.gz
+   - Linux (arm64):  https://github.com/algebananazzzzz/odyssey/releases/latest/download/odyssey-cli_Linux_arm64.tar.gz
+   - Linux (x86_64): https://github.com/algebananazzzzz/odyssey/releases/latest/download/odyssey-cli_Linux_x86_64.tar.gz
+   - MacOS (arm64):  https://github.com/algebananazzzzz/odyssey/releases/latest/download/odyssey-cli_Darwin_arm64.tar.gz
+   - MacOS (x86_64): https://github.com/algebananazzzzz/odyssey/releases/latest/download/odyssey-cli_Darwin_x86_64.tar.gz
 
 2. Extract the binary:
    ```bash
