@@ -1,0 +1,114 @@
+# .github/workflows/prd-deployment.yml
+name: Production Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  infra-deploy-prd:
+    name: Provision Infrastructure (Production)
+    runs-on: ubuntu-latest
+    environment: prd
+    if:  ${{ github.event_name == 'pull_request' && github.event.pull_request.merged == true }}
+
+    outputs:
+      ECR_REPOSITORY_URL: ${{ steps.deploy.outputs.ecr_repository_url }}
+      FUNCTION_NAME: ${{ steps.deploy.outputs.function_name }}
+
+    steps:
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: ⚙️ Setup Terraform CLI
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.11.0"
+
+      - name: 🚀 Apply Terraform for Production Infra
+        id: deploy
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform workspace select -or-create prd-app
+          terraform plan --var-file=config/prd.tfvars -out=output.tfplan -input=false
+          terraform apply -input=false --auto-approve output.tfplan
+          echo "ECR_REPOSITORY_URL=$(terraform output -raw ecr_repository_url)" >> $GITHUB_OUTPUT
+          echo "FUNCTION_NAME=$(terraform output -raw function_name)" >> $GITHUB_OUTPUT
+
+
+  create-semantic-tag:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    outputs:
+      NEW_TAG: ${{ steps.tag_version.outputs.new_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and push tag
+        id: tag_version
+        uses: anothrNick/github-tag-action@v1
+        env:
+          DEFAULT_BUMP: patch
+          RELEASE_BRANCHES: main
+          WITH_V: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: echo "New tag ${{ steps.tag_version.outputs.new_tag }}"
+
+
+  docker-deploy-prd:
+    name: Build & Deploy Docker to Lambda (prd)
+    runs-on: ubuntu-latest
+    environment: prd
+    needs: 
+      - infra-deploy-prd
+      - create-semantic-tag
+    if: success()
+
+    env:
+      TAG: ${{ needs.create-semantic-tag.outputs.NEW_TAG }}
+
+    steps:
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: 🐳 Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 🛠️ Build Docker Image
+        run: |
+          docker build -t ${{ needs.infra-deploy-prd.outputs.ECR_REPOSITORY_URL }}:$TAG-rc .
+
+      - name: 📤 Push Docker Image to ECR
+        run: |
+          docker push ${{ needs.infra-deploy-prd.outputs.ECR_REPOSITORY_URL }}:$TAG-rc
+
+      - name: 🔄 Update Lambda Function with New Image
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ needs.infra-deploy-prd.outputs.FUNCTION_NAME }} \
+            --image-uri ${{ needs.infra-deploy-prd.outputs.ECR_REPOSITORY_URL }}:$TAG-rc

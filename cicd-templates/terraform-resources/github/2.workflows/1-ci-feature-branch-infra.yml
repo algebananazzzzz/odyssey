@@ -22,15 +22,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. ⬇️ Checkout Code
+      - name: ⬇️ Checkout Code
         uses: actions/checkout@v4
 
-      - name: 2. ⚙️ Setup Terraform Cli
+      - name: ⚙️ Setup Terraform Cli
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.11.0"
 
-      - name: 3. 🧪 Check Terraform Syntax
+      - name: 🧪 Check Terraform Syntax
         working-directory: infra
         run: terraform fmt -check	
 
@@ -40,23 +40,23 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: 1. ⬇️ Checkout Code
+      - name: ⬇️ Checkout Code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
 
-      - name: 2. ⚙️ Setup Golang
+      - name: ⚙️ Setup Golang
         uses: actions/setup-go@v5
         with:
           go-version: "^1.22.0"
 
-      - name: 3. ⚙️ Setup terraform-docs
+      - name: ⚙️ Setup terraform-docs
         run: go install github.com/terraform-docs/terraform-docs@v0.20.0
       
-      - name: 4. 📃 Generate Terraform markdown documentation
+      - name: 📃 Generate Terraform markdown documentation
         run: $(go env GOPATH)/bin/terraform-docs markdown -c infra/terraform-docs.yml infra/
      
-      - name: 5. 👻 Commit documentation to repository
+      - name: 👻 Commit documentation to repository
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "👻 (Module READMEs): Automated Terraform Documentation"

@@ -15,13 +15,25 @@ projects:
   #   project_files: project-files/lambda_api_gw
 
   scheduled_job:
-    name: Scheduled Job (Lambda + EventBridge)
-    infra: infra/schedule_job
-    cicd: cicd-templates/docker_lambda
-    project_files: project-files/schedule_job
+    name: Scheduled Serverless Job (Lambda + EventBridge)
+    infra: infra/scheduled-job
+    cicd: cicd-templates/lambda-docker
+    project_files: project-files/lambda_docker
 
   scheduled_puppeteer_job:
-    name: Scheduled Puppeteer Job (for web scraping)
-    infra: infra/schedule_job
-    cicd: cicd-templates/docker_lambda
-    project_files: project-files/puppeteer_web_scraper
+    name: Scheduled Puppeteer Serverless Job (for web scraping)
+    infra: infra/scheduled-job
+    cicd: cicd-templates/lambda-docker
+    project_files: project-files/lambda_puppeteer
+
+  scheduled_ecs_task:
+    name: Scheduled ECS Task (ECS + EventBridge)
+    infra: infra/scheduled-ecs-task
+    cicd: cicd-templates/ecs-task
+    project_files: project-files/nodejs-docker
+
+  scheduled_puppeteer_ecs_task:
+    name: Scheduled Puppeteer ECS Task (for web scraping)
+    infra: infra/scheduled-ecs-task
+    cicd: cicd-templates/ecs-task
+    project_files: project-files/nodejs-puppeteer-docker

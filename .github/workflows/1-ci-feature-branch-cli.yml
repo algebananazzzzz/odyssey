@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. ⬇️ Checkout Code
+      - name: ⬇️ Checkout Code
         uses: actions/checkout@v4
 
-      - name: 2. ⚙️ Setup Golang
+      - name: ⚙️ Setup Golang
         uses: actions/setup-go@v5
         with: 
           check-latest: true
@@ -31,11 +31,11 @@ jobs:
             cli/go.sum
             **/go.sum
 
-      - name: 3. 🧪 Run Golang Unit Tests
+      - name: 🧪 Run Golang Unit Tests
         working-directory: cli
         run: go test -coverprofile coverage.out ./...
 
-      - name: 4. 📦 Upload Test Coverage Artifacts
+      - name: 📦 Upload Test Coverage Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: test-coverage
