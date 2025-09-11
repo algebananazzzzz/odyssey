@@ -36,24 +36,24 @@ jobs:
     needs: create-semantic-tag
     
     steps:
-      - name: 1. ⬇️ Checkout Code
+      - name: ⬇️ Checkout Code
         uses: actions/checkout@v4
         with:
           submodules: true
 
-      - name: 2. 🔐 Configure AWS Credentials
+      - name: 🔐 Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: 3. ⚙️ Setup Terraform CLI
+      - name: ⚙️ Setup Terraform CLI
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.11.0"
 
-      - name: 4. 🚀 Apply Terraform for Production Infra
+      - name: 🚀 Apply Terraform for Production Infra
         id: deploy
         working-directory: infra
         run: |
