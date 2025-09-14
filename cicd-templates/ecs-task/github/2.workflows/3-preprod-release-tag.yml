@@ -81,7 +81,7 @@ jobs:
 
       - name: 🏷️ Set Docker Image Tag
         id: vars
-        run: echo "TAG=preprod-${{ github.sha }}" >> $GITHUB_ENV
+        run: echo "TAG=${{ github.sha }}" >> $GITHUB_ENV
 
       - name: 🛠️ Build Docker Image
         run: |

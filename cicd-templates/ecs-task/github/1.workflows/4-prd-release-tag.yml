@@ -62,7 +62,7 @@ jobs:
     if: success()
 
     env:
-      TAG: prd-${{ github.sha }}
+      TAG: ${{ github.sha }}
 
     steps:
       - name: ⬇️ Checkout Code

@@ -1,0 +1,162 @@
+# .github/workflows/preprod-deployment.yml
+name: Production Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  infra-deploy-preprod:
+    name: Provision Infrastructure (Production)
+    runs-on: ubuntu-latest
+    environment: preprod
+    if:  ${{ github.event_name == 'pull_request' && github.event.pull_request.merged == true }}
+
+    outputs:
+      DEST_BUCKET_NAME: ${{ steps.deploy.outputs.dest_bucket_name }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ steps.deploy.outputs.cloudfront_distribution_id }}
+
+    steps:
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: ⚙️ Setup Terraform CLI
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.11.0"
+
+      - name: 🚀 Apply Terraform for Production Infra
+        id: deploy
+        working-directory: infra
+        run: |
+          terraform init -input=false
+          terraform workspace select -or-create preprod-app
+          terraform plan --var-file=config/preprod.tfvars -out=output.tfplan -input=false
+          terraform apply -input=false --auto-approve output.tfplan
+          echo "DEST_BUCKET_NAME=$(terraform output -raw dest_bucket_name)" >> $GITHUB_OUTPUT
+          echo "CLOUDFRONT_DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
+
+
+  create-semantic-tag:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    outputs:
+      NEW_TAG: ${{ steps.tag_version.outputs.new_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump version and push tag
+        id: tag_version
+        uses: anothrNick/github-tag-action@v1
+        env:
+          DEFAULT_BUMP: patch
+          RELEASE_BRANCHES: main
+          WITH_V: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: echo "New tag ${{ steps.tag_version.outputs.new_tag }}"
+
+
+  build-static-assets:
+    name: ⚙️ Build Next.js Static Assets
+    runs-on: ubuntu-latest
+    environment: preprod
+    needs: create-semantic-tag
+
+    env:
+      TAG: ${{ needs.create-semantic-tag.outputs.NEW_TAG }}-rc
+
+    steps:
+      - name: 📄 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Detect Package Manager
+        id: detect-pm
+        working-directory: src
+        run: |
+          if [ -f "yarn.lock" ]; then
+            echo "manager=yarn" >> $GITHUB_OUTPUT
+            echo "command=install" >> $GITHUB_OUTPUT
+          elif [ -f "package.json" ]; then
+            echo "manager=npm" >> $GITHUB_OUTPUT
+            echo "command=ci" >> $GITHUB_OUTPUT
+          else
+            echo "Unable to detect package manager"
+            exit 1
+          fi
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: ⬇️ Restore Next.js Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+              ~/.npm
+              ~/.cache/yarn
+              ${{ github.workspace }}/src/node_modules
+              ${{ github.workspace }}/src/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-${{ hashFiles('**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-
+
+      - name: 📦 Install Dependencies
+        working-directory: src
+        run: ${{ steps.detect-pm.outputs.manager }} ${{ steps.detect-pm.outputs.command }}
+
+      - name: ⚙️ Build with Next.js
+        working-directory: src
+        run: ${{ steps.detect-pm.outputs.manager }} run build
+
+      - name: 📤 Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: ./src/out
+
+
+  s3-deploy-preprod:
+    name: Build & Deploy Static Assets to S3 (preprod)
+    runs-on: ubuntu-latest
+    environment: preprod
+    needs: 
+      - infra-deploy-preprod
+      - build-static-assets
+    if: success()
+
+    steps:
+      - name: ⬇️ Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+          path: build-output
+
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: 🚀 Sync Static Assets to S3
+        run: aws s3 sync --delete build-output s3://${{ needs.infra-deploy-preprod.outputs.dest_bucket_name }}
+
+      - name: 🚀 Invalidate Cloudfront Cache
+        run: aws cloudfront create-invalidation --distribution-id ${{ needs.infra-deploy-preprod.outputs.cloudfront_distribution_id }} --paths "/*"

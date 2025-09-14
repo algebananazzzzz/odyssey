@@ -1,0 +1,57 @@
+# .github/workflows/ci-merge-request.yml
+name: Merge Request CI
+
+# Trigger:
+# - Runs when a pull request targets the `main` branch
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  next-smoke-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Detect Package Manager
+        id: detect-pm
+        working-directory: src
+        run: |
+          if [ -f "yarn.lock" ]; then
+            echo "manager=yarn" >> $GITHUB_OUTPUT
+            echo "command=install" >> $GITHUB_OUTPUT
+          elif [ -f "package.json" ]; then
+            echo "manager=npm" >> $GITHUB_OUTPUT
+            echo "command=ci" >> $GITHUB_OUTPUT
+          else
+            echo "Unable to detect package manager"
+            exit 1
+          fi
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: ⬇️ Restore Next.js Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+              ~/.npm
+              ~/.cache/yarn
+              ${{ github.workspace }}/src/node_modules
+              ${{ github.workspace }}/src/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-${{ hashFiles('**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-
+
+      - name: 📦 Install Dependencies
+        working-directory: src
+        run: ${{ steps.detect-pm.outputs.manager }} ${{ steps.detect-pm.outputs.command }}
+
+      - name: ⚙️ Build with Next.js
+        working-directory: src
+        run: ${{ steps.detect-pm.outputs.manager }} run build

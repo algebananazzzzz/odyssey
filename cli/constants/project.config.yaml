@@ -37,3 +37,9 @@ projects:
     infra: infra/scheduled-ecs-task
     cicd: cicd-templates/ecs-task
     project_files: project-files/nodejs-puppeteer-docker
+
+  static_website:
+    name: Static Website (Cloudfront + S3)
+    infra: infra/static-website
+    cicd: cicd-templates/cloudfront-s3-origin
+    project_files: project-files/next-ssg-site
