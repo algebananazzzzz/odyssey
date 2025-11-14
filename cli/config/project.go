@@ -4,18 +4,31 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/algebananazzzzz/odyssey/cli/constants"
 	"github.com/algebananazzzzz/odyssey/cli/types"
 	"gopkg.in/yaml.v3"
 )
 
 type ProjectConfigFile struct {
-	Config   *types.ProjectConfig
-	filePath string // path of the loaded or created config file
+	Config    *types.ProjectConfig
+	filePath  string // path of the loaded or created config file
+	Corrupted bool
 }
 
-// LoadProjectConfig loads config from ./odyssey/project.yaml
-// If not found, returns an empty config.
+// ErrMissingProjectVariable indicates a required template variable is unset.
+type ErrMissingProjectVariable struct {
+	Key   string
+	Title string
+}
+
+func (e ErrMissingProjectVariable) Error() string {
+	return fmt.Sprintf("project variable %q is required", e.Title)
+}
+
+// LoadProjectConfig loads the project configuration from odyssey/project.yaml.
+// If the file is missing it returns a sanitized default configuration.
 func LoadProjectConfig() (*ProjectConfigFile, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -29,8 +42,10 @@ func LoadProjectConfig() (*ProjectConfigFile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			defaultConfig := &types.ProjectConfig{}
+			sanitizeProjectConfig(defaultConfig)
 			return &ProjectConfigFile{
-				Config: &types.ProjectConfig{},
+				Config: defaultConfig,
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to read config file %s: %w", path, err)
@@ -39,27 +54,141 @@ func LoadProjectConfig() (*ProjectConfigFile, error) {
 		return nil, fmt.Errorf("failed to unmarshal YAML from %s: %w", path, err)
 	}
 
+	sanitizeProjectConfig(&cfg)
+	validationErr := validateProjectConfig(&cfg)
+
+	cfg.Corrupted = false
 	return &ProjectConfigFile{
-		Config:   &cfg,
-		filePath: path,
-	}, nil
+		Config:    &cfg,
+		filePath:  path,
+		Corrupted: false,
+	}, validationErr
 }
 
-// Save saves the config to the loaded file, or creates a new one in ./odyssey/project.yaml
-func (pcf *ProjectConfigFile) Save() error {
-	var savePath string
-
-	if pcf.filePath == "" {
-		// No file loaded → create new in local ./odyssey directory
-		configDir := filepath.Join(".", "odyssey")
-		if err := os.MkdirAll(configDir, 0755); err != nil {
-			return err
-		}
-		savePath = filepath.Join(configDir, "project.yaml")
-		pcf.filePath = savePath
-	} else {
-		savePath = pcf.filePath
+// sanitizeProjectConfig fills defaults for missing project settings.
+func sanitizeProjectConfig(cfg *types.ProjectConfig) {
+	if cfg == nil {
+		return
 	}
+
+	if cfg.Directory == "" {
+		cfg.Directory = defaultProjectDirectory(cfg.Code)
+	}
+
+	if cfg.Template == "" || !constants.HasProjectType(cfg.Template) {
+		cfg.Template = constants.DefaultProjectType()
+	}
+
+	var tmpl *types.Template
+	if cfg.Template != "" {
+		if loaded, err := constants.LoadTemplate(cfg.Template); err == nil {
+			tmpl = loaded
+		}
+	}
+
+	var project *types.TemplateProject
+	if tmpl != nil && cfg.Type != "" {
+		if resolved, err := tmpl.Project(cfg.Type); err == nil {
+			project = resolved
+		} else {
+			cfg.Type = ""
+		}
+	} else if cfg.Type != "" && tmpl == nil {
+		cfg.Type = ""
+	}
+
+	if project != nil {
+		if cfg.Workflow != "" {
+			if _, err := project.Workflow(cfg.Workflow); err != nil {
+				cfg.Workflow = ""
+			}
+		} else if len(project.Workflows) == 0 {
+			cfg.Workflow = ""
+		}
+	} else {
+		cfg.Workflow = ""
+	}
+
+	if cfg.Variables == nil {
+		cfg.Variables = make(map[string]string)
+	}
+}
+
+func defaultProjectDirectory(code string) string {
+	clean := strings.TrimSpace(code)
+	if clean == "" || clean == "." {
+		return "."
+	}
+	clean = filepath.Clean(clean)
+	return clean
+}
+
+// validateProjectConfig checks required template variables and normalizes the variable map.
+func validateProjectConfig(cfg *types.ProjectConfig) error {
+	if cfg == nil {
+		return fmt.Errorf("project config is nil")
+	}
+
+	if cfg.Template == "" {
+		return fmt.Errorf("project template is not set")
+	}
+
+	tmpl, err := constants.LoadTemplate(cfg.Template)
+	if err != nil {
+		return fmt.Errorf("failed to load template %s: %w", cfg.Template, err)
+	}
+
+	project, err := tmpl.Project(cfg.Type)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project %s in template %s: %w", cfg.Type, cfg.Template, err)
+	}
+
+	if len(project.Workflows) > 0 {
+		if cfg.Workflow == "" {
+			return fmt.Errorf("workflow is required for project %s", cfg.Type)
+		}
+		if _, err := project.Workflow(cfg.Workflow); err != nil {
+			return fmt.Errorf("workflow %q not defined for project %s", cfg.Workflow, cfg.Type)
+		}
+	} else {
+		cfg.Workflow = ""
+	}
+
+	vars := project.Variables
+	if cfg.Variables == nil {
+		cfg.Variables = make(map[string]string)
+	}
+
+	allowed := make(map[string]struct{}, len(vars))
+	for _, def := range vars {
+		allowed[def.Key] = struct{}{}
+		if _, ok := cfg.Variables[def.Key]; !ok {
+			cfg.Variables[def.Key] = ""
+		}
+
+		if def.Required && cfg.Variables[def.Key] == "" {
+			return ErrMissingProjectVariable{
+				Key:   def.Key,
+				Title: def.Title,
+			}
+		}
+	}
+
+	return nil
+}
+
+// Save writes the project config and its fingerprint to disk.
+func (pcf *ProjectConfigFile) Save() error {
+	projectRoot := defaultProjectDirectory("")
+	if pcf.Config != nil && pcf.Config.Directory != "" {
+		projectRoot = defaultProjectDirectory(pcf.Config.Directory)
+	}
+	configDir := filepath.Join(projectRoot, "odyssey")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return err
+	}
+	savePath := filepath.Join(configDir, "project.yaml")
+	pcf.filePath = savePath
 
 	data, err := yaml.Marshal(pcf.Config)
 	if err != nil {

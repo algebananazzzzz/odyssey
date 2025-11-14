@@ -3,7 +3,7 @@
 
 version: 2
 
-project_name: odyssey-cli
+project_name: odyssey
 
 archives:
   - formats: 

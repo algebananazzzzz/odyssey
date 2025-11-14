@@ -6,6 +6,7 @@ type GlobalConfig struct {
 	Region             string `json:"region"`
 }
 
+// IsEmpty reports whether the global config contains any values.
 func (gc *GlobalConfig) IsEmpty() bool {
 	if gc == nil {
 		return true

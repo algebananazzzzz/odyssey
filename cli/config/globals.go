@@ -14,8 +14,8 @@ type GlobalConfigFile struct {
 	filePath string // path of the loaded or created config file
 }
 
-// LoadGlobalConfig loads config from ~/.odyssey/globals.json first, then ./ .odyssey/globals.json
-// If not found, returns nil.
+// LoadGlobalConfig loads a global configuration file from the user's home or working directory.
+// It returns an empty config if no file exists.
 func LoadGlobalConfig() (*GlobalConfigFile, error) {
 	paths := []string{}
 
@@ -62,7 +62,7 @@ func LoadGlobalConfig() (*GlobalConfigFile, error) {
 	}, nil
 }
 
-// Save saves the config to the loaded file, or creates a new one in ~/.odyssey/globals.json
+// Save writes the global configuration back to the tracked file path (or creates one).
 func (gcf *GlobalConfigFile) Save() error {
 	var savePath string
 

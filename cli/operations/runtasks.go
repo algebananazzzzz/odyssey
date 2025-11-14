@@ -13,7 +13,7 @@ type Task struct {
 	Action      func(context.Context) error
 }
 
-// RunTasks runs tasks sequentially, showing a spinner for each.
+// RunTasks runs tasks sequentially with spinners, honoring a per-task timeout.
 func RunTasks(ctx context.Context, tasks []Task) error {
 	for _, task := range tasks {
 		taskCtx, cancel := context.WithTimeout(ctx, 15*time.Second)

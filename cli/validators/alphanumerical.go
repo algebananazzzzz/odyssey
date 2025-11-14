@@ -6,6 +6,7 @@ import (
 	"regexp"
 )
 
+// Alphanumeric enforces alphanumeric, dash, and underscore sequences.
 func Alphanumeric(input string) error {
 	if err := NotEmpty(input); err != nil {
 		return err

@@ -3,38 +3,39 @@ package operations
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"text/template"
 
 	"github.com/algebananazzzzz/odyssey/cli/constants"
 	"github.com/algebananazzzzz/odyssey/cli/fileops"
 	"github.com/algebananazzzzz/odyssey/cli/types"
 )
 
-// isEmptyDirectory returns true if the directory is empty or only contains hidden files (starting with .) or the "odyssey" folder.
-func isEmptyDirectory(path string) (bool, error) {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return false, err
-	}
-
-	for _, e := range entries {
-		name := e.Name()
-		// Ignore hidden files/folders and "odyssey"
-		if name != "odyssey" && name[0] != '.' {
-			return false, nil
-		}
-	}
-
-	return true, nil
-}
-
-func CloneProjectFiles(currentDir string, config types.ProjectConfig) func(ctx context.Context) error {
+// CloneProjectFiles clones the template repository and copies the relevant files.
+func CloneProjectFiles(currentDir string, cfg types.Config) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		empty, err := isEmptyDirectory(currentDir)
+		if cfg.ProjectConfig == nil {
+			return fmt.Errorf("project config is nil")
+		}
+		projectCfg := cfg.ProjectConfig
+
+		source, ok := constants.PROJECT_TEMPLATES[projectCfg.Template]
+		if !ok {
+			return fmt.Errorf("unknown template %q", projectCfg.Template)
+		}
+
+		tmpl, err := constants.LoadTemplate(projectCfg.Template)
 		if err != nil {
-			return fmt.Errorf("failed to check directory contents: %v", err)
+			return fmt.Errorf("failed to load template %s: %w", projectCfg.Template, err)
+		}
+
+		project, err := tmpl.Project(projectCfg.Type)
+		if err != nil {
+			return fmt.Errorf("failed to load project definition: %w", err)
 		}
 
 		// Create a temporary directory for cloning
@@ -44,50 +45,52 @@ func CloneProjectFiles(currentDir string, config types.ProjectConfig) func(ctx c
 		}
 		defer os.RemoveAll(tempDir)
 
+		repo := strings.TrimSpace(source.Repo)
+		if repo == "" {
+			return fmt.Errorf("template %q is missing a repository reference", projectCfg.Template)
+		}
+		repoURL := fmt.Sprintf("https://github.com/%s.git", repo)
+
 		// Clone the repository without checkout
-		cmd := exec.CommandContext(ctx, "git", "clone", "--no-checkout", constants.ODYSSEY_GIT_URL, tempDir)
+		cmd := exec.CommandContext(ctx, "git", "clone", "--no-checkout", repoURL, tempDir)
 
 		if _, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to clone repository: %v", err)
 		}
 
-		// Checkout the specific commit
-		cmd = exec.CommandContext(ctx, "git", "-C", tempDir, "checkout", constants.CommitSHA)
+		ref := source.Ref
+		if ref == "" {
+			ref = "main"
+		}
+		// Checkout the specific ref
+		cmd = exec.CommandContext(ctx, "git", "-C", tempDir, "checkout", ref)
 		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to checkout commit %s: %v, %s", constants.CommitSHA, err, output)
+			return fmt.Errorf("failed to checkout ref %s: %v, %s", ref, err, output)
 		}
 
-		projectSrc, hasProjectFiles := constants.ProjectSrc(tempDir, config)
-
-		infraSrc, infraDest := constants.InfraPaths(tempDir, currentDir, config)
-		cicdSrc, cicdDest := constants.CICDPaths(tempDir, currentDir, config)
-
-		if err := fileops.Sync(infraSrc, infraDest); err != nil {
-			return fmt.Errorf("failed to replace infra files: %v", err)
-		}
-		if err := fileops.Sync(cicdSrc, cicdDest); err != nil {
-			return fmt.Errorf("failed to replace workflow files: %v", err)
+		if err := syncMappings(tempDir, currentDir, project.Infra.Paths); err != nil {
+			return fmt.Errorf("failed to copy infra files: %w", err)
 		}
 
-		for src, dest := range constants.STATIC_TEMPLATE_FILES {
-			if err := fileops.Sync(
-				filepath.Join(tempDir, src),
-				filepath.Join(currentDir, dest),
-			); err != nil {
-				return fmt.Errorf("failed to copy template files: %v", err)
-			}
+		if err := renderTemplateMappings(tempDir, currentDir, project.Infra.Templates, project.Infra.Environments, cfg); err != nil {
+			return fmt.Errorf("failed to render infra templates: %w", err)
 		}
 
-		if empty && hasProjectFiles {
-			if err := fileops.Sync(projectSrc, currentDir); err != nil {
-				return fmt.Errorf("failed to copy project files: %v", err)
-			}
+		if workflowPaths, err := selectWorkflowPaths(project.Workflows, projectCfg.Workflow); err != nil {
+			return err
+		} else if err := syncMappings(tempDir, currentDir, workflowPaths); err != nil {
+			return fmt.Errorf("failed to copy workflow files: %w", err)
+		}
+
+		if err := syncMappings(tempDir, currentDir, project.Files.Paths); err != nil {
+			return fmt.Errorf("failed to copy project files: %w", err)
 		}
 
 		return nil
 	}
 }
 
+// InitGit initializes a git repository in the given directory.
 func InitGit(currentDir string) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		// Initialize a new repository
@@ -102,33 +105,123 @@ func InitGit(currentDir string) func(ctx context.Context) error {
 	}
 }
 
-func AddSubmodule(repoPath, submodulePath, submoduleURL string) func(ctx context.Context) error {
-	return func(ctx context.Context) error {
-		// First check if the path is already a submodule
-		checkCmd := exec.CommandContext(ctx, "git", "submodule", "status", "--", submodulePath)
-		checkCmd.Dir = repoPath
-		if err := checkCmd.Run(); err == nil {
-			// Submodule already exists
-			return nil
+func syncMappings(baseDir, currentDir string, mappings []types.PathMapping) error {
+	for _, mapping := range mappings {
+		if mapping.Src == "" || mapping.Dest == "" {
+			continue
 		}
 
-		// Check if Git is already tracking the path as a file/dir
-		checkIndexCmd := exec.CommandContext(ctx, "git", "ls-files", "--error-unmatch", submodulePath)
-		checkIndexCmd.Dir = repoPath
-		if err := checkIndexCmd.Run(); err == nil {
-			return fmt.Errorf("path %q already tracked in repo, cannot add as submodule", submodulePath)
+		src := filepath.Join(baseDir, mapping.Src)
+		dest := mapping.Dest
+		if !filepath.IsAbs(dest) {
+			dest = filepath.Join(currentDir, dest)
 		}
 
-		// Add the submodule
-		cmd := exec.CommandContext(ctx, "git", "submodule", "add", submoduleURL, submodulePath)
-		cmd.Dir = repoPath
-
-		// Run the command
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to add submodule: %v, output: %s", err, string(output))
+		if err := fileops.Sync(src, dest); err != nil {
+			return fmt.Errorf("failed to sync %s -> %s: %w", mapping.Src, dest, err)
 		}
+	}
+	return nil
+}
 
+func renderTemplateMappings(baseDir, currentDir string, mappings []types.PathMapping, environments []string, cfg types.Config) error {
+	if len(mappings) == 0 {
 		return nil
 	}
+
+	envs := environments
+	if len(envs) == 0 {
+		envs = []string{""}
+	}
+
+	for _, env := range envs {
+		envCfg := cfg
+		envCfg.Env = env
+		for _, mapping := range mappings {
+			src := filepath.Join(baseDir, mapping.Src)
+			dest := filepath.Join(currentDir, replaceEnvToken(mapping.Dest, env))
+			if err := renderTemplatePath(src, dest, envCfg); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func renderTemplatePath(src, dest string, cfg types.Config) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("failed to stat template source %s: %w", src, err)
+	}
+
+	if info.IsDir() {
+		return filepath.WalkDir(src, func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			rel, err := filepath.Rel(src, path)
+			if err != nil {
+				return err
+			}
+			target := filepath.Join(dest, rel)
+			if d.IsDir() {
+				return os.MkdirAll(target, 0o755)
+			}
+			return renderTemplateFile(path, target, cfg)
+		})
+	}
+
+	return renderTemplateFile(src, dest, cfg)
+}
+
+func renderTemplateFile(src, dest string, cfg types.Config) error {
+	content, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("failed to read template %s: %w", src, err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return fmt.Errorf("failed to create template destination %s: %w", dest, err)
+	}
+
+	tmpl, err := template.New(filepath.Base(src)).Parse(string(content))
+	if err != nil {
+		return fmt.Errorf("failed to parse template %s: %w", src, err)
+	}
+
+	file, err := os.Create(dest)
+	if err != nil {
+		return fmt.Errorf("failed to create template output %s: %w", dest, err)
+	}
+	defer file.Close()
+
+	if err := tmpl.Execute(file, cfg); err != nil {
+		return fmt.Errorf("failed to render template %s: %w", src, err)
+	}
+
+	return nil
+}
+
+func replaceEnvToken(path, env string) string {
+	return strings.ReplaceAll(path, "${{environment}}", env)
+}
+
+func selectWorkflowPaths(workflows []types.Workflow, selectedID string) ([]types.PathMapping, error) {
+	if len(workflows) == 0 {
+		return nil, nil
+	}
+	if selectedID == "" {
+		var paths []types.PathMapping
+		for _, wf := range workflows {
+			paths = append(paths, wf.Paths...)
+		}
+		return paths, nil
+	}
+	for _, wf := range workflows {
+		if wf.ID == selectedID {
+			return wf.Paths, nil
+		}
+	}
+	return nil, fmt.Errorf("selected workflow %q not found", selectedID)
 }

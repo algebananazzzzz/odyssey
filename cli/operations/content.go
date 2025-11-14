@@ -5,27 +5,24 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"text/template"
 
 	"github.com/algebananazzzzz/odyssey/cli/constants"
 	"github.com/algebananazzzzz/odyssey/cli/types"
 )
 
+// CustomizeContentFiles returns a task that renders template files for every environment.
 func CustomizeContentFiles(currentDir string, cfg types.Config) func(context.Context) error {
 	return func(ctx context.Context) error {
 		// Create a new .tfvars file for each environment
-		enviornments := constants.EnvList(cfg.ProjectConfig.Environments)
-		for _, env := range enviornments {
-			src, dest := constants.EnvTfvarsPaths(currentDir, env)
+		envs := workflowEnvNames(cfg.ProjectConfig)
+		src := filepath.Join(currentDir, "infra", "config", "template.tfvars")
+		for _, env := range envs {
+			dest := filepath.Join(currentDir, "infra", "config", fmt.Sprintf("%s.tfvars", env))
 			cfg.Env = env
 			if err := ReplaceTemplateFile(
 				src, dest, cfg); err != nil {
-				return err
-			}
-		}
-
-		for _, path := range constants.STATIC_TEMPLATE_FILES {
-			if err := ReplaceTemplateFile(path, path, cfg); err != nil {
 				return err
 			}
 		}
@@ -34,6 +31,7 @@ func CustomizeContentFiles(currentDir string, cfg types.Config) func(context.Con
 	}
 }
 
+// ReplaceTemplateFile applies a template file using the provided configuration.
 func ReplaceTemplateFile(src, dest string, cfg types.Config) error {
 	var buf bytes.Buffer
 
@@ -56,4 +54,19 @@ func ReplaceTemplateFile(src, dest string, cfg types.Config) error {
 	}
 
 	return nil
+}
+
+func workflowEnvNames(cfg *types.ProjectConfig) []string {
+	if cfg == nil || cfg.Template == "" || cfg.Type == "" {
+		return []string{"prd"}
+	}
+	tmpl, err := constants.LoadTemplate(cfg.Template)
+	if err != nil {
+		return []string{"prd"}
+	}
+	project, err := tmpl.Project(cfg.Type)
+	if err != nil {
+		return []string{"prd"}
+	}
+	return project.WorkflowEnvironments(cfg.Workflow)
 }
