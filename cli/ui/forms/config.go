@@ -1,100 +1,70 @@
 package forms
 
 import (
-	"fmt"
-
-	"github.com/algebananazzzzz/odyssey/cli/constants"
 	"github.com/algebananazzzzz/odyssey/cli/types"
 	"github.com/algebananazzzzz/odyssey/cli/ui/styles"
-	"github.com/algebananazzzzz/odyssey/cli/validators"
 	"github.com/charmbracelet/huh"
 )
 
+// NewConfigForm builds and returns the interactive configuration wizard.
 func NewConfigForm(cfg types.Config, confirm *bool) *huh.Form {
+	builder := newConfigFormBuilder(cfg, confirm)
+	return huh.NewForm(builder.groups()...).WithTheme(styles.NewTheme())
+}
 
-	projectOpts := make([]huh.Option[string], 0, len(constants.PROJECT_TEMPLATES))
-	for value, tmpl := range constants.PROJECT_TEMPLATES {
-		projectOpts = append(projectOpts, huh.NewOption(tmpl.Name, value))
+type configFormBuilder struct {
+	cfg            types.Config
+	confirm        *bool
+	projectSelect  *huh.Select[string]
+	workflowSelect *huh.Select[string]
+	lastTemplate   string
+}
+
+func newConfigFormBuilder(cfg types.Config, confirm *bool) *configFormBuilder {
+	if cfg.ProjectConfig == nil {
+		cfg.ProjectConfig = &types.ProjectConfig{}
+	}
+	ensureProjectVariables(cfg.ProjectConfig)
+
+	if cfg.ProjectConfig.Directory == "" {
+		cfg.ProjectConfig.Directory = defaultProjectDirectory(cfg.ProjectConfig.Code)
 	}
 
-	envOpts := make([]huh.Option[int], 0, len(constants.ENVIRONMENTS))
-	for value, label := range constants.ENVIRONMENTS {
-		envOpts = append(envOpts, huh.NewOption(label, value))
+	builder := &configFormBuilder{
+		cfg:          cfg,
+		confirm:      confirm,
+		lastTemplate: cfg.ProjectConfig.Template,
+	}
+	return builder
+}
+
+func (b *configFormBuilder) groups() []*huh.Group {
+	groups := []*huh.Group{
+		b.welcomeGroup(),
+		b.globalSettingsGroup(),
+		b.projectSettingsGroup(),
+		b.templateSelectionGroup(),
+		b.workflowSelectionGroup(),
 	}
 
-	return huh.NewForm(
-		huh.NewGroup(
-			huh.NewNote().
-				Title(fmt.Sprintf("Welcome to Odyssey CLI - %s", constants.Version)).
-				Description("Let's start creating a production-ready AWS project! I'll generate Terraform infrastructure, set up CI/CD pipelines, and create the project files so you can start developing quickly and safely."),
+	if group := projectVariableGroup(b.cfg); group != nil {
+		groups = append(groups, group)
+	}
 
-			huh.NewConfirm().
-				Title("Sounds cool?").
-				Affirmative("Yes!! ☁️").
-				Negative("Lets Go! 🌱").
-				Value(confirm),
-		),
-		huh.NewGroup(
-			huh.NewNote().
-				Title("Configure Global Settings").
-				Description("These settings apply across all Odyssey projects you manage. They define where your Terraform state will be stored."),
+	groups = append(groups, b.finalConfirmationGroup())
+	return groups
+}
 
-			huh.NewInput().
-				Title("Bucket").
-				Description("The AWS S3 bucket where Odyssey will store Terraform state files. Ensure the bucket already exists in your AWS account.").
-				Placeholder("my-odyssey-bucket").
-				Key("bucket").
-				Value(&cfg.GlobalConfig.Bucket).
-				Validate(validators.NotEmpty),
-
-			huh.NewInput().
-				Title("Workspace Key Prefix").
-				Description("A folder prefix inside your bucket to separate state files for different purposes.").
-				Placeholder("tfstate").
-				Key("workspace_key_prefix").
-				Value(&cfg.GlobalConfig.WorkspaceKeyPrefix).
-				Validate(validators.Alphanumeric),
-
-			huh.NewInput().
-				Title("Region").
-				Description("The AWS region to deploy your AWS resources to (e.g., ap-southeast-1).").
-				Placeholder("ap-southeast-1").
-				Key("region").
-				Value(&cfg.GlobalConfig.Region).
-				Validate(validators.AWSRegion),
-		),
-		huh.NewGroup(
-			huh.NewNote().
-				Title("Configure Project Settings").
-				Description("Define the specifics of the project you are setting up. Odyssey will generate infrastructure, CI/CD, and project files based on these settings."),
-			huh.NewInput().
-				Title("Project Code").
-				Description("A unique identifier for this project (used in resource naming and state management).").
-				Placeholder("my-project").
-				Value(&cfg.ProjectConfig.Code).
-				Validate(validators.Alphanumeric),
-
-			huh.NewSelect[string]().
-				Title("Project Type").
-				Description("Select the type of project you are creating. This determines what infrastructure Odyssey will generate.").
-				Value(&cfg.ProjectConfig.Type).
-				Options(projectOpts...),
-
-			huh.NewSelect[int]().
-				Title("Environments").
-				Description("Choose how many environments Odyssey should set up. More environments allow for safer testing before production.").
-				Value(&cfg.ProjectConfig.Environments).
-				Options(envOpts...),
-		),
-		huh.NewGroup(
-			huh.NewNote().
-				Title("Final Confirmation").
-				Description("Review your selections above. Once confirmed, Odyssey will generate all required project files, infrastructure templates, and CI/CD configuration."),
-			huh.NewConfirm().
-				Title("Confirm Setup").
-				Affirmative("Yes, proceed").
-				Negative("No, exit").
-				Value(confirm),
-		),
-	).WithTheme(styles.NewTheme())
+func (b *configFormBuilder) resetTemplateSelections() {
+	if b.cfg.ProjectConfig == nil {
+		return
+	}
+	b.cfg.ProjectConfig.Type = ""
+	b.cfg.ProjectConfig.Workflow = ""
+	if b.projectSelect != nil {
+		b.projectSelect.Value(&b.cfg.ProjectConfig.Type)
+	}
+	if b.workflowSelect != nil {
+		b.workflowSelect.Value(&b.cfg.ProjectConfig.Workflow)
+	}
 }

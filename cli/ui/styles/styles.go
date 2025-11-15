@@ -34,6 +34,7 @@ var (
 			Padding(1, 2)
 )
 
+// NewTheme returns the base theme used by the CLI form.
 func NewTheme() *huh.Theme {
 	t := huh.ThemeBase()
 

@@ -1,39 +1,33 @@
 # project.config.yaml
-# Maps each project type to infra, CICD, project files, and extra single files.
+# Maps each project type to the GitHub repository + ref that hosts its Odyssey template definition.
 
 projects:
-  vpc:
-    name: 3 Tier VPC
-    files:
-      infra: infra/vpc
-      cicd: cicd-templates/terraform-resources
+  serverless:
+    name: Serverless Templates (Lambda + EventBridge + API Gateway)
+    repo: algebananazzzzz/serverless-templates
+    ref: main
+    file: odyssey.template-config.yaml
 
-  # lambda_api_gw:
-  #   name: Serverless API (Lambda + API Gateway)
-  #   infra: infra/lambda_api_gw
-  #   cicd: cicd-templates/lambda_api_gw
-  #   project_files: project-files/lambda_api_gw
+  # vpc:
+  #   name: 3 Tier VPC
+  #   repo: TODO
+  #   ref: main
+  #   file: odyssey.template-config.yaml
 
-  scheduled_job:
-    name: Scheduled Serverless Job (Lambda + EventBridge)
-    infra: infra/scheduled-job
-    cicd: cicd-templates/lambda-docker
-    project_files: project-files/lambda_docker
+  # scheduled_puppeteer_job:
+  #   name: Scheduled Puppeteer Serverless Job (for web scraping)
+  #   repo: TODO
+  #   ref: main
+  #   file: odyssey.template-config.yaml
 
-  scheduled_puppeteer_job:
-    name: Scheduled Puppeteer Serverless Job (for web scraping)
-    infra: infra/scheduled-job
-    cicd: cicd-templates/lambda-docker
-    project_files: project-files/lambda_puppeteer
+  # scheduled_ecs_task:
+  #   name: Scheduled ECS Task (ECS + EventBridge)
+  #   repo: TODO
+  #   ref: main
+  #   file: odyssey.template-config.yaml
 
-  scheduled_ecs_task:
-    name: Scheduled ECS Task (ECS + EventBridge)
-    infra: infra/scheduled-ecs-task
-    cicd: cicd-templates/ecs-task
-    project_files: project-files/nodejs-docker
-
-  scheduled_puppeteer_ecs_task:
-    name: Scheduled Puppeteer ECS Task (for web scraping)
-    infra: infra/scheduled-ecs-task
-    cicd: cicd-templates/ecs-task
-    project_files: project-files/nodejs-puppeteer-docker
+  # scheduled_puppeteer_ecs_task:
+  #   name: Scheduled Puppeteer ECS Task (for web scraping)
+  #   repo: TODO
+  #   ref: main
+  #   file: odyssey.template-config.yaml

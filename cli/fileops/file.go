@@ -8,7 +8,7 @@ import (
 	"regexp"
 )
 
-var trackedFilePattern = regexp.MustCompile(`^\d{2}_`) // e.g., 00_file.txt, 01_config.json
+var trackedFilePattern = regexp.MustCompile(`^\d{1,2}_`) // e.g., 00_file.txt, 01_config.json
 
 // Sync merges src into dst. Both must be of the same type:
 // - If both are directories, contents are merged (with tracked-file cleanup).
@@ -16,6 +16,8 @@ var trackedFilePattern = regexp.MustCompile(`^\d{2}_`) // e.g., 00_file.txt, 01_
 // Rules:
 //   - Non-tracked existing files/dirs are preserved untouched.
 //   - Tracked files are copied if missing, replaced if present in src, and deleted if missing in src.
+//
+// Sync merges files or directories from src to dst respecting tracked files.
 func Sync(src, dst string) error {
 	srcInfo, err := os.Stat(src)
 	if err != nil {
@@ -51,7 +53,7 @@ func Sync(src, dst string) error {
 	return syncFile(src, dst)
 }
 
-// syncDir merges src directory into dst directory and deletes tracked files missing from src.
+// syncDir merges src directory into dst directory and removes tracked files missing from src.
 func syncDir(src, dst string) error {
 	srcEntries, err := os.ReadDir(src)
 	if err != nil {
@@ -97,7 +99,7 @@ func syncDir(src, dst string) error {
 	return nil
 }
 
-// syncFile copies or preserves files based on tracking rules.
+// syncFile copies or preserves tracked files from src to dst.
 func syncFile(src, dst string) error {
 	if _, err := os.Stat(dst); err == nil {
 		// dst exists, only replace if tracked
@@ -108,7 +110,7 @@ func syncFile(src, dst string) error {
 	return copyFile(src, dst)
 }
 
-// copyFile copies src file to dst, overwriting if needed.
+// copyFile copies src to dst, creating parent directories as necessary.
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
