@@ -1,14 +1,6 @@
 # Odyssey CLI
 
-Welcome to Odyssey CLI, a powerful tool designed to streamline your Odyssey project setup and management. Read more about the [Odyssey Framework]() here!
-
-This CLI application empowers developers to:
-- Quickly configure project-dependent settings like Terraform backend state and AWS region
-- Create new Odyssey projects with a single command
-
-Whether you're starting a new API, website, Odyssey CLI significantly reduces setup time and ensures best practices are followed from the outset.
-
-Get started with AWS cloud solutions, CI/CD, and Infrastructure as Code effortlessly!
+Predecessor to [odyssey-cicd](https://github.com/algebananazzzzz/odyssey-cicd). It was superseded because it was tied to AWS rather than vendor agnostic, and its framework couldn't scale to the many modern frameworks and developer use cases odyssey-cicd now supports.
 
 # Table of Contents
 
